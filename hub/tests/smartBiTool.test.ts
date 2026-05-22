@@ -56,8 +56,15 @@ describe("executeSmartBiReportLookup", () => {
     expect(result.text).toContain("用途：看 PPT 课件课中到“题目维度”的明细。");
     expect(result.text).toContain("关键字段：");
     expect(result.text).toContain("可筛：");
-    expect(result.text).toContain("也可以顺手参考");
-    expect(result.text).toContain("学情数据汇总-人课");
+    expect(result.text).not.toContain("也可以顺手参考");
+    expect(result.text).not.toContain("Demo课繁体课件占比及转化");
+    expect(result.text).not.toContain("新加坡课件&老师到课转化情况");
+    expect(result.text).not.toContain("Demo课分课件不同时段满班率");
+    expect(result.text).not.toContain("有销售过程、转化漏斗或业绩达成相关数据");
+    expect(result.text).not.toContain("关键字段：课件名称、上课日期、开始日期*");
+    expect(result.text).not.toMatch(/关键字段：.*开始日期\*/);
+    expect(result.text).not.toMatch(/关键字段：.*结束日期\*/);
+    expect(result.text).not.toMatch(/关键字段：.*主讲小组/);
     expect(result.text).not.toContain("一级目录");
     expect(result.text).not.toContain("共行每页");
     expect(result.text).not.toContain("定位数据集");

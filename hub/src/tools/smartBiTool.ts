@@ -294,7 +294,6 @@ function formatReportRecommendation(query: string, reports: ReportEntry[]): Smar
   const terms = usefulLookupTerms([...profile.searchTerms, ...profile.contextTerms]);
   const matches = rankReportRecommendations(query, reports, terms).slice(0, 12);
   const primary = selectPrimaryRecommendations(matches, terms);
-  const related = matches.filter((match) => !primary.includes(match)).slice(0, 4);
   const subject = recommendationSubject(query, terms);
 
   if (primary.length === 0) {
@@ -309,11 +308,6 @@ function formatReportRecommendation(query: string, reports: ReportEntry[]): Smar
     "",
     ...primary.map((match, index) => formatRecommendedReport(index + 1, match))
   ];
-
-  if (related.length > 0) {
-    lines.push("", "也可以顺手参考：");
-    lines.push(...related.map((match) => `- ${match.report.name}：${shortPurpose(match.report)}`));
-  }
 
   return {
     title: "BI 报表推荐",
@@ -421,18 +415,10 @@ function purposeForReport(report: ReportEntry, match?: FieldMatch): string {
   return lastPath ? `看「${lastPath}」相关字段或指标。` : "看这类主题下的字段、指标和筛选维度。";
 }
 
-function shortPurpose(report: ReportEntry): string {
-  return purposeForReport(report).replace(/^看/, "有").replace(/。$/, "");
-}
-
 function pickKeyFields(match: FieldMatch): string[] {
   const report = match.report;
   const preferred = [
-    ...match.fields.map((field) => field.name),
     "上课日期",
-    "日期",
-    "开始时间",
-    "结束时间",
     "学员id",
     "学员ID",
     "用户ID",
@@ -441,8 +427,6 @@ function pickKeyFields(match: FieldMatch): string[] {
     "区域",
     "区域等级",
     "区域细分",
-    "小组",
-    "负责人",
     "CC",
     "TMK",
     "LP",
@@ -475,7 +459,7 @@ function pickKeyFields(match: FieldMatch): string[] {
     "首答正确率",
     "末答正确率"
   ];
-  return pickFieldsByPreference(report, preferred, 12);
+  return pickFieldsByPreference(report, preferred, 8, { excludeFilterLike: true });
 }
 
 function pickFilterLikeFields(report: ReportEntry): string[] {
@@ -499,18 +483,23 @@ function pickFilterLikeFields(report: ReportEntry): string[] {
     .map((filter) => normalizeDisplayText(filter.label))
     .filter((field) => isBusinessFieldName(field) && !sameField(field, report.name))
     .slice(0, 10);
-  return [...new Set([...fromFilters, ...pickFieldsByPreference(report, preferred, 10)])].slice(0, 12);
+  return [...new Set([...fromFilters, ...pickFieldsByPreference(report, preferred, 8)])].slice(0, 8);
 }
 
-function pickFieldsByPreference(report: ReportEntry, preferred: string[], max: number): string[] {
-  const fields = report.fields.map((field) => normalizeDisplayText(field.name)).filter((field) => isBusinessFieldName(field) && !sameField(field, report.name));
+function pickFieldsByPreference(report: ReportEntry, preferred: string[], max: number, options: { excludeFilterLike?: boolean } = {}): string[] {
+  const filterLabels = report.filters.map((filter) => normalizeDisplayText(filter.label));
+  const fields = report.fields
+    .map((field) => normalizeDisplayText(field.name))
+    .filter((field) => isBusinessFieldName(field) && !sameField(field, report.name))
+    .filter((field) => !options.excludeFilterLike || !isFilterLikeFieldName(field));
+  const keyFields = options.excludeFilterLike ? fields.filter((field) => !filterLabels.some((filter) => sameField(field, filter))) : fields;
   const picked: string[] = [];
   for (const target of preferred) {
-    const found = fields.find((field) => sameField(field, target));
+    const found = keyFields.find((field) => sameField(field, target));
     if (found && !picked.includes(found)) picked.push(found);
     if (picked.length >= max) return picked;
   }
-  for (const field of fields) {
+  for (const field of keyFields) {
     if (!picked.includes(field)) picked.push(field);
     if (picked.length >= max) break;
   }
@@ -530,6 +519,10 @@ function isBusinessFieldName(name: string): boolean {
   if (/共行每页|定位数据集|跳转区域|添加\/删除字段|---DOC---|耗时分析|个人参数/.test(normalized)) return false;
   if ((normalized.match(/\*/g) ?? []).length > 1) return false;
   return true;
+}
+
+function isFilterLikeFieldName(name: string): boolean {
+  return /^(开始日期|结束日期|开始时间|结束时间|日期|月份|月|年|主讲团队|主讲小组|班级语种|班级语言)\*?$/i.test(normalizeDisplayText(name));
 }
 
 function isDirectSubjectReport(report: ReportEntry, terms: string[]): boolean {
