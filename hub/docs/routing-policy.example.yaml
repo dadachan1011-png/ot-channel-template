@@ -1,0 +1,94 @@
+# Channel Hub routing policy example.
+# This is the confirmed first-version behavior for DingTalk + Lark.
+
+default:
+  routes:
+    P0:
+      - dingtalk
+      - lark
+    P1:
+      - dingtalk
+    P2:
+      - lark
+    P3: []
+
+  fallback:
+    dingtalk:
+      - lark
+    lark:
+      - dingtalk
+
+  dedupe:
+    P0: 30s
+    P1: 5m
+    P2: 5m
+    P3: 30m
+
+  progress:
+    minInterval: 15s
+    sendMilestonesOnly: true
+
+  confirmations:
+    defaultChannel: dingtalk
+    allowCrossChannelResolution: true
+    requireTargetWhenMultiplePending: true
+    textCommandsAreCanonical: true
+
+  digests:
+    dailyStatus:
+      channel: lark
+    projectSummary:
+      channel: lark
+    mobileActionList:
+      channel: dingtalk
+
+  safety:
+    requireP0ConfirmationFor:
+      - security
+      - account
+      - destructive_filesystem
+      - credential
+      - billing
+      - permission
+      - long_term_config
+      - persistent_service
+      - external_sensitive_content
+    redactSecretsInChat: true
+
+eventRoutes:
+  securityDecision:
+    priority: P0
+    channels:
+      - dingtalk
+      - lark
+  normalConfirmation:
+    priority: P1
+    channels:
+      - dingtalk
+  taskFailure:
+    priority: P1
+    channels:
+      - dingtalk
+  automationAbnormal:
+    priority: P1
+    channels:
+      - dingtalk
+  routineCompletion:
+    priority: P2
+    channels:
+      - lark
+  dailySummary:
+    priority: P2
+    channels:
+      - lark
+  verboseLog:
+    priority: P3
+    channels: []
+
+projects:
+  channel-hub:
+    routes:
+      P1:
+        - dingtalk
+      P2:
+        - lark

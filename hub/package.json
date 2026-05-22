@@ -1,0 +1,30 @@
+{
+  "name": "channel-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "service:start": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-hub.ps1",
+    "service:stop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/stop-hub.ps1",
+    "service:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-startup-shortcut.ps1",
+    "service:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-startup-shortcut.ps1",
+    "test": "vitest run --pool threads --poolOptions.threads.singleThread",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "nanoid": "^5.0.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.3"
+  }
+}

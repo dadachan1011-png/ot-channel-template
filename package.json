@@ -1,0 +1,24 @@
+{
+  "name": "ot-channel-template",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "hub",
+    "lark",
+    "dingtalk"
+  ],
+  "scripts": {
+    "dev:hub": "npm --prefix hub run dev",
+    "dev:lark": "npm --prefix lark run dev",
+    "dev:dingtalk": "npm --prefix dingtalk run dev",
+    "service:start": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-stack.ps1",
+    "service:stop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/stop-stack.ps1",
+    "service:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-startup-shortcut.ps1",
+    "service:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-startup-shortcut.ps1",
+    "test": "npm --prefix hub test && npm --prefix lark test && npm --prefix dingtalk test",
+    "build": "npm --prefix hub run build && npm --prefix lark run build && npm --prefix dingtalk run build"
+  },
+  "devDependencies": {
+    "@openai/codex": "^0.130.0"
+  }
+}

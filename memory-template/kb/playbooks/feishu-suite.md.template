@@ -1,0 +1,11 @@
+# Feishu/Lark Suite Playbook
+
+Document how this deployment reads documents, sheets, and links.
+
+Fill:
+
+- CLI command or API method
+- required app permissions
+- supported link patterns
+- output format expected by Hub tools
+- common failure messages

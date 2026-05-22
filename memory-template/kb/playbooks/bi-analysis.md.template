@@ -1,0 +1,13 @@
+# BI Analysis Playbook
+
+Use this playbook to teach the agent how to answer BI lookup questions.
+
+Recommended answer shape for "where is this field/metric":
+
+1. Most likely report
+2. Matching field
+3. Report path or page
+4. Reference fields if the exact field is not found
+5. Confidence and why
+
+Avoid adding filters, exports, or operational steps unless the user asked for them.

@@ -1,0 +1,10 @@
+# Audio Review Playbook
+
+Document how audio transcription and analysis should work.
+
+Fill:
+
+- transcription provider
+- `AUDIO_TRANSCRIPTION_COMMAND` if using a local CLI
+- summary structure
+- privacy retention rules

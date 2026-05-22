@@ -1,0 +1,26 @@
+{
+  "modules": [
+    {
+      "title": "海外业务线",
+      "metrics": ["滚动GMV"],
+      "reports": [
+        {
+          "name": "海外业务达成情况-月趋势",
+          "path_text": "分析报表/海外直播业务线/业绩达成/海外业务达成情况-月趋势",
+          "sample_columns": ["滚动GMV", "GMV目标", "GMV达成率"],
+          "filters": ["月份", "业务线"],
+          "report_type": "dashboard",
+          "export_status": "template"
+        },
+        {
+          "name": "益智CC沟通明细",
+          "path_text": "分析报表/海外业务线/销售过程/益智CC沟通明细",
+          "sample_columns": ["通话链接", "录音链接", "CC", "学员ID"],
+          "filters": ["日期", "CC"],
+          "report_type": "table",
+          "export_status": "template"
+        }
+      ]
+    }
+  ]
+}
