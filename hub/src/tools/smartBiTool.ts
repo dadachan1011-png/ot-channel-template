@@ -93,6 +93,7 @@ const fieldSynonyms: Array<[string, string[]]> = [
 ];
 
 const businessSemanticExpansions: Array<{ triggers: RegExp; terms: string[] }> = [
+  { triggers: /PPT|ppt|课件/i, terms: ["PPT", "ppt", "课件", "PPT课件"] },
   { triggers: /销售|售前|CC|cc/i, terms: ["销售", "CC", "沟通", "通话", "海外前端", "TMK", "业绩"] },
   { triggers: /TMK|tmk/i, terms: ["TMK", "海外前端", "业务明细", "语义分析"] },
   { triggers: /服务|SOP|sop/i, terms: ["服务", "SOP", "海外后端", "语义分析"] },
@@ -128,7 +129,9 @@ const stopTerms = new Set([
   "看到",
   "能看",
   "能查",
-  "有没有"
+  "有没有",
+  "相关",
+  "关联"
 ]);
 
 export async function executeSmartBiReportLookup(input: { query: string }): Promise<SmartBiLookupResult> {
@@ -243,6 +246,18 @@ function formatDirectoryLookup(query: string, reports: ReportEntry[]): SmartBiLo
   const businessLine = inferBusinessLine(query);
   const matched = filterReports(reports, businessLine, query);
   if (matched.length === 0) {
+    const candidates = findCandidateReports(query, reports).slice(0, 6);
+    if (candidates.length > 0) {
+      return {
+        title: "BI 报表建议",
+        text: [
+          `没找到完全匹配「${businessLine}」的目录，但可以先看这些可能相关的报表：`,
+          "",
+          ...candidates.map((match, index) => formatDirectoryCandidate(index + 1, match))
+        ].join("\n")
+      };
+    }
+
     return {
       title: "BI 查询没查到",
       text: `没在本地 BI 画像里匹配到「${businessLine}」相关报表。已读取 ${reports.length} 条报表画像。`
@@ -379,9 +394,9 @@ function scoreContextMatch(report: ReportEntry, contextTerms: string[], query: s
 function splitCompoundTerm(term: string): string[] {
   const cleaned = cleanTerm(term)
     .replace(/^(?:帮我|请|麻烦你|查|查询|查看|看|看下|看一下|定位|找|获取)+/g, "")
-    .replace(/(?:字段|指标|口径|来源|报表|取数|哪里|哪个|哪些|什么|来自|从|可以|看到|的)+$/g, "")
+    .replace(/(?:字段|指标|口径|来源|报表|取数|哪里|哪个|哪些|什么|相关|关联|有关|对应|来自|从|可以|看到|是|的)+$/g, "")
     .replace(/^BI/i, "");
-  const pieces = term.split(/(?:字段|指标|口径|来源|报表|取数|哪里|哪个|哪些|什么|帮我|查询|查|看下|看一下|看|定位|来自|获取|从|可以|看到|的)+/).filter(Boolean);
+  const pieces = term.split(/(?:字段|指标|口径|来源|报表|取数|哪里|哪个|哪些|什么|相关|关联|有关|对应|帮我|查询|查|看下|看一下|看|定位|来自|获取|从|可以|看到|是|的)+/).filter(Boolean);
   if (cleaned && cleaned !== term) pieces.push(cleaned);
   if (/^[A-Za-z0-9_]+$/.test(term)) return pieces;
   return pieces.filter((item) => item.length >= 2);
@@ -426,10 +441,48 @@ function fieldSearchText(field: FieldEntry): string {
 }
 
 function filterReports(reports: ReportEntry[], businessLine: string, query: string): ReportEntry[] {
-  const terms = [...new Set([businessLine, ...extractQueryTerms(query)])];
-  const primary = reports.filter((report) => pathText(report).includes(businessLine));
+  const terms = usefulLookupTerms([businessLine, ...extractQueryTerms(query)]);
+  const primary =
+    businessLine && !isGenericBiTerm(businessLine) ? reports.filter((report) => pathText(report).includes(businessLine)) : [];
   if (primary.length > 0) return primary;
   return reports.filter((report) => terms.some((term) => pathText(report).includes(term)));
+}
+
+function findCandidateReports(query: string, reports: ReportEntry[]): FieldMatch[] {
+  const profile = buildQueryProfile(query);
+  const terms = usefulLookupTerms([...profile.searchTerms, ...profile.contextTerms]);
+  if (terms.length === 0) return [];
+  return reports
+    .map((report) => {
+      const fields = report.fields.filter((field) => scoreText(fieldSearchText(field), terms, query) > 0);
+      const filters = report.filters.filter((filter) => scoreText([filter.label, filter.semantic].filter(Boolean).join(" "), terms, query) > 0);
+      const reportText = [pathText(report), ...report.metrics, ...report.fields.map(fieldSearchText)].join(" ");
+      return {
+        report,
+        fields: fields.slice(0, 8),
+        filters: filters.slice(0, 5),
+        score: scoreText(reportText, terms, query)
+      };
+    })
+    .filter((match) => match.score > 0)
+    .sort((a, b) => b.score - a.score || b.fields.length - a.fields.length);
+}
+
+function formatDirectoryCandidate(index: number, match: FieldMatch): string {
+  const fields = [...new Set(match.fields.map((field) => normalizeDisplayText(field.name)))].slice(0, 6);
+  return [
+    `${index}. ${match.report.name}`,
+    `   路径：${match.report.path.join(" / ") || "-"}`,
+    ...(fields.length ? [`   相关字段：${fields.join("、")}`] : [])
+  ].join("\n");
+}
+
+function usefulLookupTerms(terms: string[]): string[] {
+  return [...new Set(terms.map(cleanTerm).filter((term) => isUsefulTerm(term) && !isGenericBiTerm(term)))];
+}
+
+function isGenericBiTerm(term: string): boolean {
+  return /^(BI|SmartBI|报表|数据|画像|目录|相关报表)$/i.test(term.trim());
 }
 
 function summarizeDirectoryTree(reports: ReportEntry[]): Array<{ name: string; count: number; children: string[] }> {
@@ -472,7 +525,8 @@ function inferBusinessLine(query: string): string {
   if (/海外直播业务线/.test(query)) return "海外直播业务线";
   if (/海外业务线|海外/.test(query)) return "海外";
   const match = query.match(/([\u4e00-\u9fa5A-Za-z0-9]+业务线)/);
-  return match?.[1] ?? "BI";
+  if (match?.[1]) return match[1];
+  return usefulLookupTerms(extractQueryTerms(query))[0] ?? "相关报表";
 }
 
 function dedupeReports(reports: ReportEntry[]): ReportEntry[] {
