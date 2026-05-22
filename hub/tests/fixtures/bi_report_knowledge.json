@@ -19,6 +19,46 @@
           "filters": ["日期", "CC"],
           "report_type": "table",
           "export_status": "template"
+        },
+        {
+          "name": "海外教学ppt课件课中题目明细",
+          "path_text": "海外直播业务线/海外学科/正课/上课&行为数据/海外教学ppt课件课中题目明细",
+          "sample_columns": ["海外教学ppt课件课中题目明细", "开始日期*", "结束日期*", "豌豆ID", "直播间ID", "开始日期*结束日期*豌豆ID直播间ID共行每页行/？"],
+          "filters": ["开始日期*", "结束日期*", "直播间ID", "豌豆ID", "定位数据集(海外教学ppt课件课中题目明细)"],
+          "report_type": "table",
+          "export_status": "template"
+        },
+        {
+          "name": "海外教学ppt课件课中学员明细",
+          "path_text": "海外直播业务线/海外学科/正课/上课&行为数据/海外教学ppt课件课中学员明细",
+          "sample_columns": ["上课日期", "学员id", "豌豆ID", "课程阶段", "课件名称", "老师id", "老师名称", "益智教学老师", "老师团队", "解锁题目数", "首答正确数", "末答正确数", "首答正确率", "末答正确率"],
+          "filters": ["开始日期*", "结束日期*", "主讲团队", "主讲小组", "益智教学老师", "班级语种", "直播间ID", "豌豆ID", "课件名称", "课程阶段"],
+          "report_type": "table",
+          "export_status": "template"
+        },
+        {
+          "name": "学情数据汇总-人课",
+          "path_text": "海外直播业务线/海外学科/正课/上课&行为数据/学情数据汇总-人课",
+          "sample_columns": ["课件名称", "学员id", "首答正确率"],
+          "filters": ["开始日期*", "结束日期*"],
+          "report_type": "table",
+          "export_status": "template"
+        },
+        {
+          "name": "课后习题正确率by题目维度",
+          "path_text": "海外直播业务线/海外学科/正课/课后习题/课后习题正确率by题目维度",
+          "sample_columns": ["课件名称", "题目ID", "正确率"],
+          "filters": ["开始日期*", "结束日期*"],
+          "report_type": "table",
+          "export_status": "template"
+        },
+        {
+          "name": "益智海外上课行为宽表",
+          "path_text": "海外直播业务线/海外学科/正课/上课&行为数据/益智海外上课行为宽表",
+          "sample_columns": ["课件名称", "学员id", "上课行为"],
+          "filters": ["开始日期*", "结束日期*"],
+          "report_type": "table",
+          "export_status": "template"
         }
       ]
     }

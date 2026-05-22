@@ -42,4 +42,29 @@ describe("executeSmartBiReportLookup", () => {
     expect(result.text).toContain("一级目录");
     expect(result.text).toContain("海外");
   });
+
+  it("answers PPT courseware report questions with ranked concrete reports", async () => {
+    const result = await executeSmartBiReportLookup({ query: "ppt课件相关报表是哪个" });
+
+    expect(result.title).toBe("BI 报表推荐");
+    expect(result.text).toContain("PPT 课件最直接相关的是这两张");
+    expect(result.text).toContain("海外教学ppt课件课中学员明细");
+    expect(result.text).toContain("海外教学ppt课件课中题目明细");
+    expect(result.text.indexOf("海外教学ppt课件课中学员明细")).toBeLessThan(result.text.indexOf("海外教学ppt课件课中题目明细"));
+    expect(result.text).toContain("路径：海外直播业务线 / 海外学科 / 正课 / 上课&行为数据");
+    expect(result.text).toContain("用途：看 PPT 课件课中到“学员维度”的表现。");
+    expect(result.text).toContain("用途：看 PPT 课件课中到“题目维度”的明细。");
+    expect(result.text).toContain("关键字段：");
+    expect(result.text).toContain("可筛：");
+    expect(result.text).toContain("相关但不是专门 PPT 的课件报表");
+    expect(result.text).toContain("学情数据汇总-人课");
+    expect(result.text).not.toContain("一级目录");
+    expect(result.text).not.toContain("共行每页");
+    expect(result.text).not.toContain("定位数据集");
+    expect(result.text).not.toContain("开始日期*结束日期*");
+    expect(result.text).not.toContain("关键字段：豌豆ID、海外教学ppt课件课中题目明细");
+    expect(result.text).not.toContain("可筛：开始日期*、结束日期*、直播间ID、豌豆ID、海外教学ppt课件课中题目明细");
+    expect(result.text).not.toContain("继续展开 BI 目录");
+    expect(result.text).not.toContain("继续检查 BI 元数据缺口");
+  });
 });

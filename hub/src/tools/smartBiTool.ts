@@ -143,6 +143,10 @@ export async function executeSmartBiReportLookup(input: { query: string }): Prom
     };
   }
 
+  if (isReportRecommendationQuery(input.query)) {
+    return formatReportRecommendation(input.query, reports);
+  }
+
   if (isFieldLookupQuery(input.query)) {
     return formatFieldLookup(input.query, reports);
   }
@@ -285,6 +289,45 @@ function formatDirectoryLookup(query: string, reports: ReportEntry[]): SmartBiLo
   };
 }
 
+function formatReportRecommendation(query: string, reports: ReportEntry[]): SmartBiLookupResult {
+  const matches = findCandidateReports(query, reports).slice(0, 12);
+  const direct = matches
+    .filter((match) => isDirectPptCoursewareReport(match.report))
+    .sort((a, b) => reportRecommendationPriority(a.report) - reportRecommendationPriority(b.report) || b.score - a.score)
+    .slice(0, 2);
+  const related = matches.filter((match) => !direct.includes(match)).filter((match) => isCoursewareReport(match.report)).slice(0, 5);
+  const primary = direct.length ? direct : matches.slice(0, 3);
+
+  if (primary.length === 0) {
+    return {
+      title: "BI 报表没命中",
+      text: "没在本地 BI 画像里找到足够相关的课件报表。可以补充关键词，比如“课中题目 / 学员明细 / 课件名称 / 课件ID”。"
+    };
+  }
+
+  const lines = [
+    direct.length >= 2 ? "PPT 课件最直接相关的是这两张：" : "最可能相关的是这几张：",
+    "",
+    ...primary.map((match, index) => formatRecommendedReport(index + 1, match))
+  ];
+
+  if (related.length > 0) {
+    lines.push("", "相关但不是专门 PPT 的课件报表：");
+    lines.push(...related.map((match) => `- ${match.report.name}：${shortPurpose(match.report)}`));
+  }
+
+  lines.push(
+    "",
+    "如果你问的是“PPT 课中互动题表现”，优先用「海外教学ppt课件课中题目明细」。",
+    "如果你问的是“某个学生/老师/直播间在 PPT 课件里的答题表现”，优先用「海外教学ppt课件课中学员明细」。"
+  );
+
+  return {
+    title: "BI 报表推荐",
+    text: lines.join("\n")
+  };
+}
+
 function scoreFieldMatch(report: ReportEntry, profile: QueryProfile, query: string): FieldMatch {
   const terms = profile.searchTerms;
   const fieldTerms = profile.fieldTerms.length ? profile.fieldTerms : terms;
@@ -302,6 +345,129 @@ function scoreFieldMatch(report: ReportEntry, profile: QueryProfile, query: stri
     filters: filterMatches.slice(0, 5),
     score: fieldIntentWithoutFieldEvidence ? 0 : fieldScore * 4 + filterScore * 2 + metricScore * 3 + pathScore + contextScore
   };
+}
+
+function formatRecommendedReport(index: number, match: FieldMatch): string {
+  const report = match.report;
+  return [
+    `${index}. ${report.name}`,
+    `路径：${report.path.join(" / ") || "-"}`,
+    `用途：${purposeForReport(report)}`,
+    `关键字段：${pickKeyFields(report).join("、") || "-"}`,
+    `可筛：${pickFilterLikeFields(report).join("、") || "-"}`
+  ].join("\n");
+}
+
+function purposeForReport(report: ReportEntry): string {
+  const name = report.name.toLowerCase();
+  if (/ppt/.test(name) && /学员|人课/.test(report.name)) return "看 PPT 课件课中到“学员维度”的表现。";
+  if (/ppt/.test(name) && /题目/.test(report.name)) return "看 PPT 课件课中到“题目维度”的明细。";
+  if (/人课/.test(report.name)) return "看课件到人课/学员维度的表现。";
+  if (/课节/.test(report.name)) return "看课件到课节维度的表现。";
+  if (/正确率|题目/.test(report.name)) return "看题目或正确率维度的课件表现。";
+  if (/宽表/.test(report.name)) return "看更底层、更宽的上课行为明细。";
+  return "看课件相关字段或指标。";
+}
+
+function shortPurpose(report: ReportEntry): string {
+  return purposeForReport(report).replace(/^看/, "有").replace(/。$/, "");
+}
+
+function pickKeyFields(report: ReportEntry): string[] {
+  const preferred = [
+    "上课日期",
+    "学员id",
+    "用户ID",
+    "豌豆ID",
+    "课程阶段",
+    "课件名称",
+    "教学课件名称",
+    "课件ID",
+    "课件编号",
+    "课件等级",
+    "老师id",
+    "老师ID",
+    "老师名称",
+    "益智教学老师",
+    "老师团队",
+    "解锁题目数",
+    "首答正确数",
+    "末答正确数",
+    "首答正确率",
+    "末答正确率"
+  ];
+  return pickFieldsByPreference(report, preferred, 12);
+}
+
+function pickFilterLikeFields(report: ReportEntry): string[] {
+  const preferred = [
+    "开始日期*",
+    "开始日期",
+    "结束日期*",
+    "结束日期",
+    "主讲团队",
+    "主讲小组",
+    "益智教学老师",
+    "班级语种",
+    "班级语言",
+    "直播间ID",
+    "豌豆ID",
+    "课件名称",
+    "教学课件名称",
+    "课程阶段"
+  ];
+  const fromFilters = report.filters
+    .map((filter) => normalizeDisplayText(filter.label))
+    .filter((field) => isBusinessFieldName(field) && !sameField(field, report.name))
+    .slice(0, 10);
+  return [...new Set([...fromFilters, ...pickFieldsByPreference(report, preferred, 10)])].slice(0, 12);
+}
+
+function pickFieldsByPreference(report: ReportEntry, preferred: string[], max: number): string[] {
+  const fields = report.fields.map((field) => normalizeDisplayText(field.name)).filter((field) => isBusinessFieldName(field) && !sameField(field, report.name));
+  const picked: string[] = [];
+  for (const target of preferred) {
+    const found = fields.find((field) => sameField(field, target));
+    if (found && !picked.includes(found)) picked.push(found);
+    if (picked.length >= max) return picked;
+  }
+  for (const field of fields) {
+    if (!picked.includes(field)) picked.push(field);
+    if (picked.length >= max) break;
+  }
+  return picked;
+}
+
+function sameField(field: string, target: string): boolean {
+  const a = normalizeDisplayText(field).replace(/\*/g, "").toLowerCase();
+  const b = normalizeDisplayText(target).replace(/\*/g, "").toLowerCase();
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function isBusinessFieldName(name: string): boolean {
+  const normalized = normalizeDisplayText(name);
+  if (!normalized || normalized.length > 40) return false;
+  if (/^(刷新|导出|打印|保存|另存为|图形|视图|后退|前进|添加\/删除字段|报表设置|参数设置|耗时分析|个人参数|透视分析|全部显示定制过滤)$/.test(normalized)) return false;
+  if (/共行每页|定位数据集|跳转区域|添加\/删除字段|---DOC---|耗时分析|个人参数/.test(normalized)) return false;
+  if ((normalized.match(/\*/g) ?? []).length > 1) return false;
+  return true;
+}
+
+function isDirectPptCoursewareReport(report: ReportEntry): boolean {
+  const text = pathText(report).toLowerCase();
+  return text.includes("ppt") && text.includes("课件") && /课中/.test(text) && /学员|题目/.test(text);
+}
+
+function reportRecommendationPriority(report: ReportEntry): number {
+  if (report.name === "海外教学ppt课件课中学员明细") return 0;
+  if (report.name === "海外教学ppt课件课中题目明细") return 1;
+  if (/ppt/i.test(report.name) && /学员|人课/.test(report.name)) return 2;
+  if (/ppt/i.test(report.name) && /题目/.test(report.name)) return 3;
+  return 10;
+}
+
+function isCoursewareReport(report: ReportEntry): boolean {
+  return /课件|ppt/i.test([report.name, ...report.path, ...report.fields.map((field) => field.name)].join(" "));
 }
 
 function formatFieldMatch(index: number, match: FieldMatch): string {
@@ -328,6 +494,14 @@ function isFieldLookupQuery(query: string): boolean {
   const compact = query.replace(/\s+/g, "");
   if (knownMetricTerms.some((term) => compact.toLowerCase().includes(term.toLowerCase()))) return true;
   return /(字段|指标|口径|取数|来源|从.*报表|哪个报表|什么报表|哪些报表|哪里看|哪里查|可以在.*报表|field|metric|column)/i.test(compact);
+}
+
+function isReportRecommendationQuery(query: string): boolean {
+  const compact = query.replace(/\s+/g, "");
+  if (!/(报表|BI|SmartBI)/i.test(compact)) return false;
+  if (knownMetricTerms.some((term) => compact.toLowerCase().includes(term.toLowerCase()))) return false;
+  if (/(字段|指标|口径|来源|取数|看到|能看|能查)/.test(compact)) return false;
+  return /(相关报表|关联报表|报表是哪个|哪个报表|哪些报表|什么报表|报表推荐|找.*报表|查.*报表)/i.test(compact);
 }
 
 function extractQueryTerms(query: string): string[] {

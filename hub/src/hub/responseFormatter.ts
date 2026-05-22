@@ -19,7 +19,7 @@ export function formatNativeToolReply(input: { toolId: NativeToolId; title: stri
   return {
     title: input.title,
     text,
-    actions: followUpActions(input.toolId)
+    actions: input.toolId === "smartbi_report_lookup" ? undefined : followUpActions(input.toolId)
   };
 }
 
