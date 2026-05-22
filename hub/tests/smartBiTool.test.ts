@@ -47,7 +47,7 @@ describe("executeSmartBiReportLookup", () => {
     const result = await executeSmartBiReportLookup({ query: "ppt课件相关报表是哪个" });
 
     expect(result.title).toBe("BI 报表推荐");
-    expect(result.text).toContain("PPT 课件最直接相关的是这两张");
+    expect(result.text).toContain("ppt课件最直接相关的是这两张");
     expect(result.text).toContain("海外教学ppt课件课中学员明细");
     expect(result.text).toContain("海外教学ppt课件课中题目明细");
     expect(result.text.indexOf("海外教学ppt课件课中学员明细")).toBeLessThan(result.text.indexOf("海外教学ppt课件课中题目明细"));
@@ -56,7 +56,7 @@ describe("executeSmartBiReportLookup", () => {
     expect(result.text).toContain("用途：看 PPT 课件课中到“题目维度”的明细。");
     expect(result.text).toContain("关键字段：");
     expect(result.text).toContain("可筛：");
-    expect(result.text).toContain("相关但不是专门 PPT 的课件报表");
+    expect(result.text).toContain("也可以顺手参考");
     expect(result.text).toContain("学情数据汇总-人课");
     expect(result.text).not.toContain("一级目录");
     expect(result.text).not.toContain("共行每页");
@@ -66,5 +66,29 @@ describe("executeSmartBiReportLookup", () => {
     expect(result.text).not.toContain("可筛：开始日期*、结束日期*、直播间ID、豌豆ID、海外教学ppt课件课中题目明细");
     expect(result.text).not.toContain("继续展开 BI 目录");
     expect(result.text).not.toContain("继续检查 BI 元数据缺口");
+  });
+
+  it("answers non-PPT report recommendation questions without courseware copy", async () => {
+    const result = await executeSmartBiReportLookup({ query: "销售相关报表是哪个" });
+
+    expect(result.title).toBe("BI 报表推荐");
+    expect(result.text).toContain("销售");
+    expect(result.text).toContain("路径：");
+    expect(result.text).toContain("用途：");
+    expect(result.text).toContain("关键字段：");
+    expect(result.text).toContain("可筛：");
+    expect(result.text).not.toContain("课件相关字段");
+    expect(result.text).not.toContain("PPT 课中互动题表现");
+    expect(result.text).not.toContain("一级目录");
+    expect(result.text).not.toContain("继续展开 BI 目录");
+  });
+
+  it("keeps field-like report questions on field lookup instead of broad recommendation", async () => {
+    const result = await executeSmartBiReportLookup({ query: "录音链接相关报表是哪个" });
+
+    expect(result.title).toBe("BI 字段来源");
+    expect(result.text).toContain("录音链接");
+    expect(result.text).not.toContain("BI 报表推荐");
+    expect(result.text).not.toContain("PPT 课中互动题表现");
   });
 });

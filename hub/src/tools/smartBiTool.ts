@@ -143,12 +143,12 @@ export async function executeSmartBiReportLookup(input: { query: string }): Prom
     };
   }
 
-  if (isReportRecommendationQuery(input.query)) {
-    return formatReportRecommendation(input.query, reports);
-  }
-
   if (isFieldLookupQuery(input.query)) {
     return formatFieldLookup(input.query, reports);
+  }
+
+  if (isReportRecommendationQuery(input.query)) {
+    return formatReportRecommendation(input.query, reports);
   }
 
   return formatDirectoryLookup(input.query, reports);
@@ -290,37 +290,30 @@ function formatDirectoryLookup(query: string, reports: ReportEntry[]): SmartBiLo
 }
 
 function formatReportRecommendation(query: string, reports: ReportEntry[]): SmartBiLookupResult {
-  const matches = findCandidateReports(query, reports).slice(0, 12);
-  const direct = matches
-    .filter((match) => isDirectPptCoursewareReport(match.report))
-    .sort((a, b) => reportRecommendationPriority(a.report) - reportRecommendationPriority(b.report) || b.score - a.score)
-    .slice(0, 2);
-  const related = matches.filter((match) => !direct.includes(match)).filter((match) => isCoursewareReport(match.report)).slice(0, 5);
-  const primary = direct.length ? direct : matches.slice(0, 3);
+  const profile = buildQueryProfile(query);
+  const terms = usefulLookupTerms([...profile.searchTerms, ...profile.contextTerms]);
+  const matches = rankReportRecommendations(query, reports, terms).slice(0, 12);
+  const primary = selectPrimaryRecommendations(matches, terms);
+  const related = matches.filter((match) => !primary.includes(match)).slice(0, 4);
+  const subject = recommendationSubject(query, terms);
 
   if (primary.length === 0) {
     return {
       title: "BI 报表没命中",
-      text: "没在本地 BI 画像里找到足够相关的课件报表。可以补充关键词，比如“课中题目 / 学员明细 / 课件名称 / 课件ID”。"
+      text: `没在本地 BI 画像里找到足够相关的「${subject}」报表。可以补充业务线、指标、字段名或筛选条件再查。`
     };
   }
 
   const lines = [
-    direct.length >= 2 ? "PPT 课件最直接相关的是这两张：" : "最可能相关的是这几张：",
+    recommendationLeadLine(subject, primary),
     "",
     ...primary.map((match, index) => formatRecommendedReport(index + 1, match))
   ];
 
   if (related.length > 0) {
-    lines.push("", "相关但不是专门 PPT 的课件报表：");
+    lines.push("", "也可以顺手参考：");
     lines.push(...related.map((match) => `- ${match.report.name}：${shortPurpose(match.report)}`));
   }
-
-  lines.push(
-    "",
-    "如果你问的是“PPT 课中互动题表现”，优先用「海外教学ppt课件课中题目明细」。",
-    "如果你问的是“某个学生/老师/直播间在 PPT 课件里的答题表现”，优先用「海外教学ppt课件课中学员明细」。"
-  );
 
   return {
     title: "BI 报表推荐",
@@ -347,18 +340,70 @@ function scoreFieldMatch(report: ReportEntry, profile: QueryProfile, query: stri
   };
 }
 
+function rankReportRecommendations(query: string, reports: ReportEntry[], terms: string[]): FieldMatch[] {
+  if (terms.length === 0) return [];
+  return reports
+    .map((report) => {
+      const fields = report.fields.filter((field) => scoreText(fieldSearchText(field), terms, query) > 0 && isBusinessFieldName(field.name));
+      const filters = report.filters.filter((filter) => scoreText([filter.label, filter.semantic].filter(Boolean).join(" "), terms, query) > 0);
+      const reportText = [report.name, ...report.path, report.module ?? "", report.reportType ?? "", ...report.metrics].join(" ");
+      const schemaText = [...report.fields.map(fieldSearchText), ...report.filters.map((filter) => filter.label)].join(" ");
+      const nameScore = scoreText(report.name, terms, query) * 5;
+      const pathScore = scoreText(reportText, terms, query) * 3;
+      const fieldScore = fields.reduce((score, field) => score + scoreText(fieldSearchText(field), terms, query), 0) * 2;
+      const schemaScore = scoreText(schemaText, terms, query);
+      return {
+        report,
+        fields: fields.slice(0, 8),
+        filters: filters.slice(0, 5),
+        score: nameScore + pathScore + fieldScore + schemaScore + recommendationSpecificityBonus(report, terms)
+      };
+    })
+    .filter((match) => match.score > 0)
+    .sort((a, b) => b.score - a.score || b.fields.length - a.fields.length || reportRecommendationPriority(a.report, terms) - reportRecommendationPriority(b.report, terms));
+}
+
+function selectPrimaryRecommendations(matches: FieldMatch[], terms: string[]): FieldMatch[] {
+  const direct = matches
+    .filter((match) => isDirectSubjectReport(match.report, terms))
+    .sort((a, b) => reportRecommendationPriority(a.report, terms) - reportRecommendationPriority(b.report, terms) || b.score - a.score);
+  const selected = direct.length >= 2 ? direct.slice(0, 2) : matches.slice(0, 3);
+  return selected.length > 3 ? selected.slice(0, 3) : selected;
+}
+
+function recommendationSubject(query: string, terms: string[]): string {
+  const cleaned = cleanTerm(query)
+    .replace(/(相关报表|关联报表|报表是哪个|哪个报表|哪些报表|什么报表|报表推荐|是哪个|帮我|查一下|查下|查询|看看|看下|BI|SmartBI)/g, "")
+    .trim();
+  const term = usefulLookupTerms([cleaned, ...terms]).find((item) => !isQuestionSentence(item));
+  return term || "这类数据";
+}
+
+function recommendationLeadLine(subject: string, primary: FieldMatch[]): string {
+  const directText = primary.length === 2 ? "最直接相关的是这两张：" : "优先看这几张：";
+  return `${subject}${directText}`;
+}
+
+function recommendationSpecificityBonus(report: ReportEntry, terms: string[]): number {
+  let bonus = 0;
+  if (/明细|宽表|汇总|达成|趋势|监控/.test(report.name)) bonus += 4;
+  if (terms.some((term) => normalizeDisplayText(report.name).toLowerCase().includes(normalizeDisplayText(term).toLowerCase()))) bonus += 6;
+  if (terms.some((term) => report.path.some((part) => sameField(part, term)))) bonus += 3;
+  return bonus;
+}
+
 function formatRecommendedReport(index: number, match: FieldMatch): string {
   const report = match.report;
   return [
     `${index}. ${report.name}`,
     `路径：${report.path.join(" / ") || "-"}`,
-    `用途：${purposeForReport(report)}`,
-    `关键字段：${pickKeyFields(report).join("、") || "-"}`,
+    `用途：${purposeForReport(report, match)}`,
+    `关键字段：${pickKeyFields(match).join("、") || "-"}`,
     `可筛：${pickFilterLikeFields(report).join("、") || "-"}`
   ].join("\n");
 }
 
-function purposeForReport(report: ReportEntry): string {
+function purposeForReport(report: ReportEntry, match?: FieldMatch): string {
   const name = report.name.toLowerCase();
   if (/ppt/.test(name) && /学员|人课/.test(report.name)) return "看 PPT 课件课中到“学员维度”的表现。";
   if (/ppt/.test(name) && /题目/.test(report.name)) return "看 PPT 课件课中到“题目维度”的明细。";
@@ -366,19 +411,41 @@ function purposeForReport(report: ReportEntry): string {
   if (/课节/.test(report.name)) return "看课件到课节维度的表现。";
   if (/正确率|题目/.test(report.name)) return "看题目或正确率维度的课件表现。";
   if (/宽表/.test(report.name)) return "看更底层、更宽的上课行为明细。";
-  return "看课件相关字段或指标。";
+  const text = [report.name, ...report.path, ...report.fields.map((field) => field.name), ...(match?.fields.map((field) => field.name) ?? [])].join(" ");
+  if (/销售|CC|TMK|转化|业绩|渠道|例子|进线|约课/.test(text)) return "看销售过程、转化漏斗或业绩达成相关数据。";
+  if (/录音|通话|沟通|语义/.test(text)) return "看沟通过程、录音/通话材料或语义执行明细。";
+  if (/续费|退费|升舱/.test(text)) return "看续费、退费、升舱或服务结果相关数据。";
+  if (/服务|SOP|LP|学习伙伴/.test(text)) return "看服务动作、LP 跟进或 SOP 执行明细。";
+  if (/GMV|流水|收入|消耗|成本|ROI|达成/.test(text)) return "看经营指标、收入成本或目标达成相关数据。";
+  const lastPath = report.path.at(-2) && report.path.at(-2) !== report.name ? report.path.at(-2) : report.module;
+  return lastPath ? `看「${lastPath}」相关字段或指标。` : "看这类主题下的字段、指标和筛选维度。";
 }
 
 function shortPurpose(report: ReportEntry): string {
   return purposeForReport(report).replace(/^看/, "有").replace(/。$/, "");
 }
 
-function pickKeyFields(report: ReportEntry): string[] {
+function pickKeyFields(match: FieldMatch): string[] {
+  const report = match.report;
   const preferred = [
+    ...match.fields.map((field) => field.name),
     "上课日期",
+    "日期",
+    "开始时间",
+    "结束时间",
     "学员id",
+    "学员ID",
     "用户ID",
     "豌豆ID",
+    "大账户ID",
+    "区域",
+    "区域等级",
+    "区域细分",
+    "小组",
+    "负责人",
+    "CC",
+    "TMK",
+    "LP",
     "课程阶段",
     "课件名称",
     "教学课件名称",
@@ -390,6 +457,18 @@ function pickKeyFields(report: ReportEntry): string[] {
     "老师名称",
     "益智教学老师",
     "老师团队",
+    "渠道一级分类",
+    "渠道二级分类",
+    "分发类型",
+    "通话链接",
+    "录音链接",
+    "过程id",
+    "语义点",
+    "执行结果",
+    "滚动GMV",
+    "GMV",
+    "转化率",
+    "续费率",
     "解锁题目数",
     "首答正确数",
     "末答正确数",
@@ -453,17 +532,24 @@ function isBusinessFieldName(name: string): boolean {
   return true;
 }
 
-function isDirectPptCoursewareReport(report: ReportEntry): boolean {
+function isDirectSubjectReport(report: ReportEntry, terms: string[]): boolean {
   const text = pathText(report).toLowerCase();
-  return text.includes("ppt") && text.includes("课件") && /课中/.test(text) && /学员|题目/.test(text);
+  const usefulTerms = terms.map((term) => normalizeDisplayText(term).toLowerCase()).filter((term) => term.length >= 2);
+  if (usefulTerms.length === 0) return false;
+  const hitCount = usefulTerms.filter((term) => text.includes(term)).length;
+  return hitCount >= Math.min(2, usefulTerms.length) || usefulTerms.some((term) => normalizeDisplayText(report.name).toLowerCase().includes(term));
 }
 
-function reportRecommendationPriority(report: ReportEntry): number {
+function reportRecommendationPriority(report: ReportEntry, terms: string[] = []): number {
   if (report.name === "海外教学ppt课件课中学员明细") return 0;
   if (report.name === "海外教学ppt课件课中题目明细") return 1;
-  if (/ppt/i.test(report.name) && /学员|人课/.test(report.name)) return 2;
-  if (/ppt/i.test(report.name) && /题目/.test(report.name)) return 3;
-  return 10;
+  const name = normalizeDisplayText(report.name).toLowerCase();
+  const directTermHits = terms.filter((term) => name.includes(normalizeDisplayText(term).toLowerCase())).length;
+  let priority = 20 - directTermHits * 3;
+  if (/明细|宽表/.test(report.name)) priority -= 3;
+  if (/汇总|达成|趋势|监控/.test(report.name)) priority -= 2;
+  if (/验收中|旧版|旧节点/.test(report.name)) priority += 4;
+  return priority;
 }
 
 function isCoursewareReport(report: ReportEntry): boolean {
@@ -493,7 +579,8 @@ function pickReferenceFields(report: ReportEntry): string[] {
 function isFieldLookupQuery(query: string): boolean {
   const compact = query.replace(/\s+/g, "");
   if (knownMetricTerms.some((term) => compact.toLowerCase().includes(term.toLowerCase()))) return true;
-  return /(字段|指标|口径|取数|来源|从.*报表|哪个报表|什么报表|哪些报表|哪里看|哪里查|可以在.*报表|field|metric|column)/i.test(compact);
+  if (fieldSynonyms.some(([term, synonyms]) => [term, ...synonyms].some((item) => compact.includes(item)))) return true;
+  return /(字段|指标|口径|取数|来源|链接|从.*报表|哪个报表|什么报表|哪些报表|哪里看|哪里查|可以在.*报表|field|metric|column)/i.test(compact);
 }
 
 function isReportRecommendationQuery(query: string): boolean {
